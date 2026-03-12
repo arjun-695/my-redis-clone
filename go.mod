@@ -1,0 +1,3 @@
+module my-redis.clone
+
+go 1.24.4
