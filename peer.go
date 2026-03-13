@@ -1,3 +1,4 @@
+// Individual Client Connection logic
 package main
 
 import (
@@ -6,26 +7,28 @@ import (
 )
 
 type Peer struct {
-	conn net.Conn
+	conn  net.Conn
 	msgCh chan []byte
 }
 
-
 func NewPeer(conn net.Conn, msgCh chan []byte) *Peer {
 	return &Peer{
-		conn: conn, 
+		conn:  conn,
 		msgCh: msgCh,
 	}
 }
 func (p *Peer) readLoop() error {
-	buf := make([]byte, 1024)
+	buf := make([]byte, 1024) // Buffer size 1024 bytes
 	for {
 		n, err := p.conn.Read(buf)
 		if err != nil {
 			return err
 		}
-		msgBuf := make([]byte , n)
+		//
+		msgBuf := make([]byte, n)
 		copy(msgBuf, buf[:n])
-		p.msgCh <- msgBuf
+
+		// sending data to main loop of server
+		p.msgCh <- msgBuf //  data flow how it is read and sent in server's main loop
 	}
 }
