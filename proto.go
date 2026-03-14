@@ -29,6 +29,10 @@ type GetCommand struct {
 	key string
 }
 
+type DelCommand struct {
+	key string
+}
+
 func parseCommand(raw string) (Command, error) {
 	rd := resp.NewReader(bytes.NewBufferString(raw))
 
@@ -68,6 +72,14 @@ func parseCommand(raw string) (Command, error) {
 				return GetCommand{
 					key: args[1].String(), // why returning key and not value
 
+				}, nil
+
+			case "DEL":
+				if len(args) != 2 {
+					return nil, fmt.Errorf("Invalid DEL command")
+				}
+				return DelCommand{
+					key: args[1].String(),
 				}, nil
 			}
 		}
