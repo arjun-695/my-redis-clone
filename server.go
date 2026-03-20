@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"time"
 )
 
 const defaultListenAddr = ":5001"
@@ -26,8 +27,8 @@ type Server struct {
 
 func NewServer(cfg Config) *Server {
 
-	if len(cfg.ListenAddr) == 0 { // what is litstenaAddr
-		cfg.ListenAddr = defaultListenAddr // from where did this defaultlistenAddr come from?
+	if len(cfg.ListenAddr) == 0 { // ListenAddr: IP + Port
+		cfg.ListenAddr = defaultListenAddr  
 
 	}
 	return &Server{
@@ -64,7 +65,7 @@ func (s *Server) loop() { //explaination
 
 		case rawMsg := <-s.msgCh:
 			if err := s.handleMessage(rawMsg); err != nil {
-				slog.Error("raw message error", "err", err) //slog functions ?
+				slog.Error("raw message error", "err", err) 
 			}
 
 		case <-s.quitCh:
@@ -105,17 +106,30 @@ func (s *Server) handleConn(conn net.Conn) {
 }
 
 func (s *Server) handleMessage(msg Message) error {
-	cmd, err := parseCommand(string(msg.data)) //reflect on string
+	cmd, err := parseCommand(string(msg.data)) //reflect on string since msg.data is []byte ; returns command which is a empty interface 
 	if err != nil {
-		msg.peer.Send([]byte(fmt.Sprintf("-ERR %s \r\n", err.Error()))) // why peer.Send ; why Sprintf what does it do
+		msg.peer.Send([]byte(fmt.Sprintf("-ERR %s \r\n", err.Error()))) // msg.peer -> sending client error info; Sprintf -> formatted error message to convert in byte and send it to client.
 	}
 
-	switch v := cmd.(type) { // why .(type) in brackets and what is stored in cmd
+	switch v := cmd.(type) { // .(type)-> "Type Switch" or "Type Assertion" checks the type of struct in cmd 
 	case SetCommand:
 
 		s.kv.Set([]byte(v.key), []byte(v.val))
-		msg.peer.Send([]byte("+Ok\r\n"))
 
+		if v.ex > 0 {
+			//time.AfterFunc schedules a function to run after a duration
+			//runs in it's own go routine so it doesn't block the server 
+			time.AfterFunc(time.Duration(v.ex)*time.Second, func(){
+				s.kv.Delete([]byte(v.key))
+			})
+		}
+		msg.peer.Send([]byte("+Ok\r\n"))
+		// time.AfterFunc is a neat and simple approach
+		//but wht if:
+		// there are 10 mil keys with diff expiring time? this will waste RAM and CPU scheduling time
+		//Better Approach
+		// Passive: when a client tries to GET a key, check if it is expired, if yes then delete it and return nil
+		// Active: A background threat checks 20 random keys with an associated TTL, 10 times each second and deletes the expired ones  
 	case GetCommand:
 
 		val, ok := s.kv.Get([]byte(v.key))

@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"strconv" //for String to integer conversion
 
 	"github.com/tidwall/resp"
 )
@@ -23,6 +24,7 @@ type Command interface {
 
 type SetCommand struct {
 	key, val string
+	ex int// expiration in seconds, 0 means no expiration
 }
 
 type GetCommand struct {
@@ -37,7 +39,7 @@ func parseCommand(raw string) (Command, error) {
 	rd := resp.NewReader(bytes.NewBufferString(raw))
 
 	for {
-		v, _, err := rd.ReadValue() //??
+		v, _, err := rd.ReadValue() //rd - special library "tidwall/resp" ; ReadValue() reads the string sent by the client and returns an array 
 		if err == io.EOF {
 			break
 		}
@@ -47,7 +49,7 @@ func parseCommand(raw string) (Command, error) {
 
 		// if REDIS client has returned an array (eg: ["SET","key", "val"])
 		if v.Type() == resp.Array {
-			args := v.Array() // what does array function do
+			args := v.Array() // RESP data structure -> Go native array/slice
 			if len(args) == 0 {
 				continue
 			}
@@ -57,20 +59,32 @@ func parseCommand(raw string) (Command, error) {
 
 			switch cmdName {
 			case "SET":
-				if len(args) != 3 {
+				if len(args) != 3 && len(args) != 5 {
 					return nil, fmt.Errorf("Invalid SET Command")
 				}
-				return SetCommand{
+				cmd:= SetCommand{
 					key: args[1].String(),
 					val: args[2].String(),
-				}, nil
+				}
+
+				if len(args) == 5{
+					if args[3].String() != "EX" {
+						return nil, fmt.Errorf("expected EX argument")
+					}
+					ex, err := strconv.Atoi(args[4].String())
+					if err != nil{
+						return nil, fmt.Errorf("invalid EX duration")
+					}
+					cmd.ex = ex
+				}
+				return cmd, nil
 
 			case "GET":
 				if len(args) != 2 {
 					return nil, fmt.Errorf("Invalid GET Command")
 				}
 				return GetCommand{
-					key: args[1].String(), // why returning key and not value
+					key: args[1].String(), // client wants to get the value of key passed 
 
 				}, nil
 
