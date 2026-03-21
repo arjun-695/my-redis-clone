@@ -19,6 +19,7 @@ type Server struct {
 	ln        net.Listener
 	peers     map[*Peer]bool
 	addPeerCh chan *Peer    // Channels Pipeline to send data from one go routine to another safely...
+	delPeerCh chan *Peer    // handles disconnection and prevents memory leak 
 	quitCh    chan struct{} // Sends signal to quit server
 	msgCh     chan Message  // saves data and client information coming from clients
 	kv        *KV           //stores key value pair
@@ -35,6 +36,7 @@ func NewServer(cfg Config) *Server {
 		Config:    cfg,
 		peers:     make(map[*Peer]bool),
 		addPeerCh: make(chan *Peer),
+		delPeerCh: make(chan *Peer),
 		quitCh:    make(chan struct{}),
 		msgCh:     make(chan Message),
 		kv:        NewKV(),
@@ -74,7 +76,10 @@ func (s *Server) loop() { //explaination
 		case peer := <-s.addPeerCh:
 			s.peers[peer] = true
 			slog.Info("peer added to internal map", "remoteAddr", peer.conn.RemoteAddr())
-
+		
+		case peer := <- s.delPeerCh:
+			delete(s.peers, peer)
+			slog.Info("peer disconnected", "active_connection", len(s.peers))
 		}
 	}
 }
@@ -96,7 +101,7 @@ func (s *Server) acceptLoop() error { // why returning error? why pointers to se
 
 func (s *Server) handleConn(conn net.Conn) {
 
-	peer := NewPeer(conn, s.msgCh)
+	peer := NewPeer(conn, s.msgCh, s.delPeerCh)
 	s.addPeerCh <- peer
 	slog.Info("new peer connected", "remoteAddr", conn.RemoteAddr())
 
@@ -106,12 +111,8 @@ func (s *Server) handleConn(conn net.Conn) {
 }
 
 func (s *Server) handleMessage(msg Message) error {
-	cmd, err := parseCommand(string(msg.data)) //reflect on string since msg.data is []byte ; returns command which is a empty interface 
-	if err != nil {
-		msg.peer.Send([]byte(fmt.Sprintf("-ERR %s \r\n", err.Error()))) // msg.peer -> sending client error info; Sprintf -> formatted error message to convert in byte and send it to client.
-	}
 
-	switch v := cmd.(type) { // .(type)-> "Type Switch" or "Type Assertion" checks the type of struct in cmd 
+	switch v := msg.cmd.(type) { // .(type)-> "Type Switch" or "Type Assertion" checks the type of struct in cmd 
 	case SetCommand:
 
 		s.kv.Set([]byte(v.key), []byte(v.val))
@@ -123,7 +124,7 @@ func (s *Server) handleMessage(msg Message) error {
 				s.kv.Delete([]byte(v.key))
 			})
 		}
-		msg.peer.Send([]byte("+Ok\r\n"))
+		go msg.peer.Send([]byte("+Ok\r\n")) //server loop will not wait for any slow client because of "go"
 		// time.AfterFunc is a neat and simple approach
 		//but wht if:
 		// there are 10 mil keys with diff expiring time? this will waste RAM and CPU scheduling time
@@ -134,10 +135,10 @@ func (s *Server) handleMessage(msg Message) error {
 
 		val, ok := s.kv.Get([]byte(v.key))
 		if !ok {
-			msg.peer.Send([]byte("$01\r\n"))
+			go msg.peer.Send([]byte("$-1\r\n"))
 		} else {
 			respMsg := fmt.Sprintf("$%d\r\n%s\r\n", len(val), val)
-			msg.peer.Send([]byte(respMsg))
+			go msg.peer.Send([]byte(respMsg))
 		}
 
 	case DelCommand:
@@ -146,9 +147,8 @@ func (s *Server) handleMessage(msg Message) error {
 		if deleted {
 			resp = ":1\r\n"
 		}
-		msg.peer.Send([]byte(resp))
+		go msg.peer.Send([]byte(resp))
 	}
 
 	return nil
-
 }

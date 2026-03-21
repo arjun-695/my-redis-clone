@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"time"
 )
 
 func main() {
@@ -25,9 +26,39 @@ func main() {
 	// Reading Server's Reply
 	buf := make([]byte, 1024)
 	n, err := conn.Read(buf)
-	if err != nil{
+	if err != nil {
 		log.Fatal(err)
 	}
 
 	fmt.Printf("Server Response: %q\n", string(buf[:n]))
+
+	cmdGet := "*2\r\n$3\r\nGET\r\n$4\r\nname\r\n"
+	fmt.Println("Sending: GET name")
+	conn.Write([]byte(cmdGet))
+
+	// 5. GET ka response read karein
+	n2, _ := conn.Read(buf)
+	fmt.Println("Server Reply:", string(buf[:n2]))
+
+	conn.Write([]byte("*2\r\n$3\r\nDEL\r\n$4\r\nname\r\n"))
+	n, _ = conn.Read(buf)
+	fmt.Printf("   -> DEL Response: %q (Expected :1 means deleted)\n\n", string(buf[:n]))
+
+	fmt.Println("   -> Action: Setting 'token' with 2 seconds TTL...")
+	conn.Write([]byte("*5\r\n$3\r\nSET\r\n$5\r\ntoken\r\n$6\r\nsecret\r\n$2\r\nEX\r\n$1\r\n2\r\n"))
+	n, _ = conn.Read(buf)
+	fmt.Printf("   -> SET EX Response: %q\n", string(buf[:n]))
+
+	conn.Write([]byte("*2\r\n$3\r\nGET\r\n$5\r\ntoken\r\n"))
+	n, _ = conn.Read(buf)
+	fmt.Printf("   -> Immediate GET: %q (Should contain data)\n", string(buf[:n]))
+
+	fmt.Println("   ... Waiting 3 seconds for expiration ...")
+	time.Sleep(3 * time.Second)
+
+	conn.Write([]byte("*2\r\n$3\r\nGET\r\n$5\r\ntoken\r\n"))
+	n, _ = conn.Read(buf)
+	fmt.Printf("   -> Delayed GET: %q (Expected $-1 meaning NULL)\n", string(buf[:n]))
+
+	fmt.Println("\n All Tests Completed!")
 }
