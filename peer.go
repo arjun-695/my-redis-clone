@@ -49,7 +49,8 @@ func (p *Peer) readLoop() error {
 		if v.Type() == resp.Array {
 			cmd, err := parseCommand(v.Array())
 			if err != nil {
-				p.Send( []byte("-ERR" + err.Error() + "\r\n"))
+				p.Send( []byte("-ERR " + err.Error() + "\r\n"))
+				continue
 			} 
 		
 		// sending data to main loop of server
