@@ -1,0 +1,11 @@
+version: "3.8"
+
+services:
+  redis-server:
+    build: .
+    container_name: my-redis-clone
+    ports:
+      - "5001:5001"
+    volumes:
+      - ./dump.aof:/app/dump.aof
+    restart: unless-stopped

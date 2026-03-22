@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/generative-ai-go/genai"
 	"google.golang.org/api/option"
+	"github.com/joho/godotenv"
 )
 
 const sysInstructn = `You are a translator that converts English into the Redis Serialization Protocol (RESP). 
@@ -33,6 +34,10 @@ Input: "find 2 vectors similar to 0.5 0.2"
 Output: *5\r\n$7\r\nVSEARCH\r\n$3\r\n0.5\r\n$3\r\n0.2\r\n$5\r\nLIMIT\r\n$1\r\n2\r\n`
 
 func main() {
+	err := godotenv.Load()
+	if err != nil {
+		fmt.Println("No .env file found, looking for system environment variables...")
+	}
 	apiKey := os.Getenv("Gemini_API_KEY")
 	if apiKey == "" {
 		log.Fatal("Error: Gemini_API_KEY environment variable is not set. \n ")
