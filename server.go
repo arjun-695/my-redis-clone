@@ -141,6 +141,12 @@ func (s *Server) handleMessage(msg Message) error {
 		}
 	case DelCommand:
 		s.aof.Write(SerializeCommand("DEL", v.key))
+	case VSetCommand:
+		args := []string{"VSET", v.key}
+		for _, vecVal := range v.vector {
+			args = append(args, strconv.FormatFloat(vecVal, 'f', -1, 64))
+		}
+		s.aof.Write(SerializeCommand(args...))
 	}
 
 	return s.executeCommand(msg.cmd, msg.peer)

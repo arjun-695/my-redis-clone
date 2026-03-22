@@ -122,20 +122,23 @@ func parseCommand(args []resp.Value) (Command, error) {
 				}
 			}
 
-			if limitIdx == -1 || limitIdx == len(args)-1 {
-				return nil , fmt.Errorf("Suntax error, expected LIMIT [number]")
+			if limitIdx != -1 {
+				if limitIdx == len(args)-1 {
+					return nil, fmt.Errorf("Syntax error, expected LIMIT [number]")
+				}
+				limitStr := args[limitIdx+1].String()
+				parsedLimit, err := strconv.Atoi(limitStr)
+				if err == nil {
+					limit = parsedLimit
+				}
+			} else {
+				limitIdx = len(args)
 			}
 
-			limitStr := args[limitIdx + 1].String()
-			parsedLimit, err := strconv.Atoi(limitStr)
-			if err == nil {
-				limit = parsedLimit
-			}
-
-			for i := 1; i < limitIdx ; i++ {
-				val, err := strconv. ParseFloat(args[i].String(), 64)
+			for i := 1; i < limitIdx; i++ {
+				val, err := strconv.ParseFloat(args[i].String(), 64)
 				if err != nil {
-					return nil, fmt.Errorf("invalid vector float: %v" , err)
+					return nil, fmt.Errorf("invalid vector float: %v", err)
 				}
 				vec = append(vec, val)
 			}

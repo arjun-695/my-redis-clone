@@ -21,6 +21,8 @@ Designed for concurrency and safety, it uses Go's powerful concurrency model (go
 
 ## ✨ Key Features
 
+- **🧠 AI-Powered CLI:** Includes a custom CLI powered by Google's Gemini (`gemini-2.5-flash`), allowing you to interact with your database using pure natural language (e.g., *"create a vector for car with values 0.2 0.8 0.1"*).
+- **📉 Vector Database Capabilities:** First-class support for storing high-dimensional vectors and discovering nearest neighbors via Cosine Similarity (`VSET`, `VSEARCH`).
 - **⚡ High Concurrency:** Handles numerous simultaneous client connections effortlessly using goroutines and safe channel-based pipelines.
 - **🔄 RESP Compatibility:** Fully parses and serializes data using RESP, functioning seamlessly with standard Redis tools and clients.
 - **🔒 Thread-Safe Operations:** Utilizes `sync.RWMutex` to ensure safe concurrent reads and exclusive writes to the in-memory data store.
@@ -41,16 +43,19 @@ Currently, the server supports the following core Redis commands:
 | `SET` | `SET key value [EX seconds]` | Stores the `key` and `value`. Optional `EX` sets a time-to-live in seconds. |
 | `GET` | `GET key` | Retrieves the value associated with the `key`. Returns `nil` if not found. |
 | `DEL` | `DEL key` | Deletes the specified `key` from the store. |
+| `VSET` | `VSET key float1 float2 ...` | Stores a multi-dimensional floating point vector associated with `key`. |
+| `VSEARCH` | `VSEARCH float1 float2 ... [LIMIT n]`| Performs a Cosine Similarity search to find the top `n` most similar vectors stored in the DB. |
 
 ---
 
-## 🏗️ Architecture Architecture
+## 🏗️ Architecture
 
 1. **Server (`server.go`)**: Acts as the central hub. It listens for incoming TCP connections and spawns a new `Peer` goroutine for each client. Channel pipelines (`msgCh`, `addPeerCh`, `delPeerCh`) safely transport messages to the main event loop, eliminating race conditions.
 2. **Peers (`peer.go`)**: Manages individual client lifecycles. Reads byte streams, decodes RESP arrays, and forwards structured `Command` objects to the main server loop.
-3. **KV Store (`kv.go`)**: The core in-memory map protected by an `RWMutex`, allowing multiple simultaneous reads but isolated writes.
+3. **KV Store (`kv.go`)**: The core in-memory map protected by an `RWMutex`. Now includes a secondary `vdata` map optimized for storing arrays of floats and executing fast Cosine Similarity math for vector queries.
 4. **AOF Engine (`aof.go`)**: Manages the `dump.aof` file. It sequentially writes RESP-encoded commands and forces a disk sync (`fsync`) every second for persistence.
 5. **Protocol Parser (`proto.go`)**: Translates RESP structures sent by clients into Go `Command` structs and vice versa.
+6. **AI CLI (`client/ai_cli/main.go`)**: A unique, decoupled client application utilizing the Google GenAI SDK to transform natural English prompts directly into raw byte-stream RESP queries.
 
 ---
 
@@ -102,6 +107,30 @@ Execute commands:
 +Ok
 127.0.0.1:5001> DEL mykey
 :1
+```
+
+### Using the AI-Powered CLI (Gemini)
+
+Don't want to type raw commands? You can talk to the database in plain English! 
+Make sure you have exported your `Gemini_API_KEY`.
+
+```bash
+export Gemini_API_KEY="your-api-key-here"
+cd client/ai_cli
+go run main.go
+```
+
+```text
+Welcome to AI powered Redis CLI 
+Type 'exit' to quit.
+
+Ai-CLI > create a vector for car with values 0.2 0.8 0.1
+[Gemini Translated to RESP] -> "*5\r\n$4\r\nVSET\r\n$3\r\ncar\r\n$3\r\n0.2\r\n$3\r\n0.8\r\n$3\r\n0.1\r\n"
+Server: "+OK\r\n"
+
+Ai-CLI > find 1 vector most similar to 0.2 0.9 0.1
+[Gemini Translated to RESP] -> "*6\r\n$7\r\nVSEARCH\r\n$3\r\n0.2\r\n$3\r\n0.9\r\n$3\r\n0.1\r\n$5\r\nLIMIT\r\n$1\r\n1\r\n"
+Server: "*2\r\n$3\r\ncar\r\n$6\r\n0.9996\r\n"
 ```
 
 ### Using `nc` (Netcat)
