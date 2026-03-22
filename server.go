@@ -189,7 +189,26 @@ func (s *Server) executeCommand(cmd Command, peer *Peer) error {
 			resp = ":1\r\n"
 		}
 		go peer.Send([]byte(resp))}
-	}
 
+	case VSetCommand: 
+		s.kv.VSet(v.key, v.vector)
+		if peer != nil{
+			go peer.Send([]byte("+OK\r\n"))
+		}
+	
+	case VSearchCommand:
+		matches := s.kv.VSearch(v.vector, v.limit)
+		if peer != nil {
+			// A RESP array response
+			var respStr string
+			respStr += fmt.Sprintf("*%d\r\n", len(matches)*2) // sending key and score both 
+			for _, m := range matches {
+				scoreStr := fmt.Sprintf("%.4f", m.Score)
+				respStr += fmt.Sprintf("$%d\r\n%s\r\n", len(m.Key), m.Key)
+				respStr += fmt.Sprintf("$%d\r\n%s\r\n", len(scoreStr), scoreStr)
+			}
+		go peer.Send([]byte(respStr))
+		}
+	}
 	return nil
 }

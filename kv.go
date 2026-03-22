@@ -1,17 +1,21 @@
 package main
 
 import (
+	"math"
+	"sort"
 	"sync"
 )
 
 type KV struct {
-	mu   sync.RWMutex // "Read- Write mutex"
-	data map[string][]byte
+	mu    sync.RWMutex // "Read- Write mutex"
+	data  map[string][]byte
+	vdata map[string][]float64 // for Vector embeddings
 }
 
-func NewKV() *KV {// new key-value pair 
+func NewKV() *KV { // new key-value pair
 	return &KV{
-		data: make(map[string][]byte),
+		data:  make(map[string][]byte),
+		vdata: make(map[string][]float64),
 	}
 }
 
@@ -44,4 +48,59 @@ func (kv *KV) Delete(key []byte) bool {
 	delete(kv.data, strKey)
 
 	return ok //key not present
+}
+
+// VSet to add a vector
+func (kv *KV) VSet(key string, vector []float64) {
+	kv.mu.Lock()
+	defer kv.mu.Unlock()
+	kv.vdata[key] = vector
+}
+
+// to hold search results
+type VectorMatch struct {
+	Key   string
+	Score float64
+}
+
+// finds the most similar vectors; Uses cosine similarity
+func (kv *KV) VSearch(query []float64, limit int) []VectorMatch {
+	kv.mu.RLock()
+	defer kv.mu.RUnlock()
+
+	var matches []VectorMatch
+
+	for key, vec := range kv.vdata {
+		score := cosineSimilarity(query, vec)
+		matches = append(matches, VectorMatch{Key: key, Score: score})
+
+	}
+
+	// sort in descending order first
+	sort.Slice(matches, func(i, j int) bool {
+		return matches[i].Score > matches[j].Score
+	})
+
+	// Return top 'N' limits
+	if limit > len(matches) {
+		limit = len(matches)
+	}
+	return matches[:limit]
+}
+
+//Core Math algo 
+// Measures the angle between two multi-dimensional vectors
+func cosineSimilarity(a, b []float64) float64{
+	var dotProduct, normA, normB float64
+	for i := 0; i< len(a) && i< len(b); i++ {
+		dotProduct += a[i] * b[i]
+		normA += a[i] * a[i]
+		normB += b[i] * b[i]
+
+	}
+
+	if normA == 0 || normB == 0 {
+		return 0.0
+	}
+	return dotProduct / (math.Sqrt(normA) * math.Sqrt(normB))
 }

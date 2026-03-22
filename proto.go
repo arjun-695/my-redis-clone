@@ -34,6 +34,16 @@ type DelCommand struct {
 	key string
 }
 
+type VSetCommand struct{
+	key string
+	vector []float64
+}
+
+type VSearchCommand struct {
+	vector []float64
+	limit int
+}
+
 func parseCommand(args []resp.Value) (Command, error) {
 
 	if len(args) == 0 {
@@ -79,6 +89,57 @@ func parseCommand(args []resp.Value) (Command, error) {
 		return DelCommand{
 			key: args[1].String(),
 		}, nil
+	
+		case "VSET":
+			if len(args) < 3 {
+				return nil, fmt.Errorf("VSET requires a key and at least one vector value")
+			}
+			key := args[1].String()
+			var vec []float64
+			for i := 2; i< len(args); i++ {
+				val, err := strconv.ParseFloat(args[i].String(),64)
+				if err != nil {
+					return nil, fmt.Errorf("invalid vector float: %v ", err)
+				}
+				vec = append(vec, val)
+			}
+			return VSetCommand{key: key, vector: vec}, nil
+
+		case "VSEARCH" :
+			if len(args) < 4 { // VSEARCH + values + LIMIT + n
+				return nil , fmt.Errorf("VSEARCH requires vector, Limit, and a number") 
+			}
+
+			limit := 1 //default
+			var vec []float64
+
+			//Find Limit Keyword
+			limitIdx := -1
+			for i :=1; i< len(args); i++{
+				if strings.ToUpper(args[i].String()) == "LIMIT"{
+					limitIdx = i
+					break
+				}
+			}
+
+			if limitIdx == -1 || limitIdx == len(args)-1 {
+				return nil , fmt.Errorf("Suntax error, expected LIMIT [number]")
+			}
+
+			limitStr := args[limitIdx + 1].String()
+			parsedLimit, err := strconv.Atoi(limitStr)
+			if err == nil {
+				limit = parsedLimit
+			}
+
+			for i := 1; i < limitIdx ; i++ {
+				val, err := strconv. ParseFloat(args[i].String(), 64)
+				if err != nil {
+					return nil, fmt.Errorf("invalid vector float: %v" , err)
+				}
+				vec = append(vec, val)
+			}
+			return VSearchCommand{vector: vec, limit: limit}, nil
 	}
 	return nil, fmt.Errorf("unknown Command")
 }
